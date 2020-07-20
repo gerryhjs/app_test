@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Document</title>
+    <style>
+        .kuang{text-align: center;margin-top:60px;}
+        #mess{text-align: center}
+    </style>
+    <!--script type="text/javascript" src="./adapter.js"></script-->
+</head>
+<body>
+<div style="text-align: center;">
+    <button id="statusBtn" onclick="statusBtnOption();">点击连接</button>
+    <button id="offBtn" onclick="offerBtnOption();">offer</button>
+</div>
+<div class="kuang">
+    <video id="video1"></video>
+    <video id="video2"></video>
+</div>
+<div id="mess">未连接<br></div>
+<script>
+    var mess = document.getElementById("mess");
+    var ws;
+    var b_is_offer = true;
+    var remoteSdp;
+    var connect=0;
+    var o_media_constraints =
+        { 'mandatory':
+                {
+                    'OfferToReceiveAudio': true,
+                    'OfferToReceiveVideo': true
+                },
+            'optional':
+                [
+                    {DtlsSrtpKeyAgreement: true}
+                ]
+        };
+
+
+    var   o_pc=  new RTCPeerConnection(
+        { iceServers: ao_ice_servers },
+        o_media_constraints
+    );
+    // var RTCPeerConnection = null;
+    //var getUserMedia = null;
+
+    var ao_ice_servers = [{url: 'stun:117.25.162.78:3478'}];
+
+
+    function init() {
+        /*
+        RTCPeerConnection = function(pcConfig, pcConstraints) {
+            return new webkitRTCPeerConnection(pcConfig, pcConstraints);
+        };
+         */
+        if (!RTCPeerConnection && window.webkitRTCPeerConnection) {
+            // very basic support for old versions.
+            RTCPeerConnection = window.webkitRTCPeerConnection;
+        }
+        //getUserMedia = navigator.webkitGetUserMedia.bind(navigator);
+        //navigator.getUserMedia = getUserMedia;
+
+    }
+
+    function getUserMedia(constraints, success, error) {
+
+
+        mess.innerHTML = "getUserMedia..";
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+//最新的标准API
+            mess.innerHTML = "navigator.mediaDevices.getUserMedia";
+            navigator.mediaDevices.getUserMedia(constraints).then(success).catch(error);
+        } else if (navigator.webkitGetUserMedia) {
+
+//webkit核心浏览器
+            mess.innerHTML = "navigator.webkitGetUserMedia";
+navigator.webkitGetUserMedia(constraints, success, error)
+        } else if (navigator.mozGetUserMedia) {
+            mess.innerHTML = "navigator.mozGetUserMedia";
+//firfox浏览器
+navigator.mozGetUserMedia(constraints, success, error);
+
+        } else if (navigator.getUserMedia) {
+            mess.innerHTML = "navigator.getUserMedia";
+//旧版API
+navigator.getUserMedia(constraints, success, error);
+
+        } else if (window.getUserMedia) {
+            mess.innerHTML = "window.getUserMedia.";
+            return window.getUserMedia(constraints, success, error);
+        }
+        else{
+            mess.innerHTML = "no getUserMedia..";
+        }
+    }
+
+
+
+    function offerBtnOption() {
+        var offBtn = document.getElementById("offBtn");
+        if (b_is_offer) {
+            b_is_offer = false;
+            offBtn.innerHTML = "answer";
+        } else {
+            b_is_offer = true;
+            offBtn.innerHTML = "offer";
+        }
+    }
+
+    function setlocalstream(o_stream) {
+        var element = document.getElementById("video1");
+        if (typeof element.srcObject !== 'undefined') {
+            element.srcObject = o_stream;
+            element.play();
+            console.log("element srcObject..");
+        } else if (typeof element.mozSrcObject !== 'undefined') {
+            element.mozSrcObject = o_stream;
+            console.log("element mozSrcObject..");
+        } else if (typeof element.src !== 'undefined') {
+            if (o_stream) {
+                console.log("element set src and play..");
+                element.src = URL.createObjectURL(o_stream);
+                element.play();
+            }
+        }
+        //element.src = URL.createObjectURL(o_stream);
+        //element.play();
+    }
+    function setremotestream(o_stream) {
+        // if (connect) return;
+        console.log("setRemote");
+        var element = document.getElementById("video2");
+        console.log(o_stream.toString());
+        if (typeof element.srcObject !== 'undefined') {
+            element.srcObject = o_stream;
+            element.play();
+            console.log("element srcObject..");
+            connect=1;
+        } else if (typeof element.mozSrcObject !== 'undefined') {
+            element.mozSrcObject = o_stream;
+            console.log("element mozSrcObject..");
+        } else if (typeof element.src !== 'undefined')
+        {
+            if (o_stream) {
+                console.log("element set src and play..");
+                element.src = URL.createObjectURL(o_stream);
+                element.play();
+            }
+        }
+    }
+
+    //element.src = URL.createObjectURL(stream);
+
+    function setRemoteSdp(o_sdp) {
+        var    json={};
+        if (b_is_offer)
+            json.type='answer';
+        else
+            json.type='offer';
+
+        json.sdp=o_sdp;
+        o_pc.setRemoteDescription(new RTCSessionDescription(json)).then(function () {
+            console.log("suc");
+        });
+
+        // setremotestream(o_pc.remoteDescription);
+    }
+
+    function initUserMediaAnswer() {
+        console.log("answer");
+        ws.send("1");
+        var oMediaConfigure = { audio: true,
+            video: {
+                mandatory: {
+                    minWidth: 640,
+                    minHeight: 480,
+                    maxWidth: 640,
+                    maxHeight: 480,
+                    minFrameRate: 25,
+                }
+            }
+        };
+        getUserMedia(
+            oMediaConfigure,
+            function(o_stream){
+
+                mess.innerHTML = "getUserMedia 成功";
+                o_pc.addStream(o_stream);
+                setlocalstream(o_stream);
+
+                o_pc.createAnswer().then(function(answer) {
+                    return o_pc.setLocalDescription(answer);
+                })
+                    .then(function() {
+                        ws.send(o_pc.localDescription.sdp)
+                    });
+
+
+
+            },
+            function(s_error){
+                mess.innerHTML = "Failed: "+s_error;
+            }
+        );
+
+    }
+
+
+    function initUserMediaOffer() {
+        console.log("offer");
+        var oMediaConfigure = { audio: true,
+            video: {
+                mandatory: {
+                    minWidth: 640,
+                    minHeight: 480,
+                    maxWidth: 640,
+                    maxHeight: 480,
+                    minFrameRate: 25,
+                }
+            }
+        };
+        getUserMedia(
+
+            oMediaConfigure,
+            function(o_stream){
+
+                mess.innerHTML = "getUserMedia 成功";
+
+                o_pc.addStream(o_stream);
+                setlocalstream(o_stream);
+
+                o_pc.createOffer(
+                    function (o_offer) {
+                        o_pc.setLocalDescription(o_offer,
+                            function () {
+                                ws.send(o_pc.localDescription.sdp);
+                                console.log("setLocalDescription success.");
+                            },
+                            function (s_error) {
+                                console.log("setLocalDescription error.");
+                            }
+                        );
+                    },
+                    function (s_error) {
+                        console.log("createOffer error.");
+                    },
+                    o_media_constraints,
+                    b_is_offer
+                );
+
+
+            },
+            function(s_error){
+                mess.innerHTML = "Failed: "+s_error;
+            }
+        );
+
+    }
+
+    function wsc_init() {
+
+
+
+        o_pc.onnegotiationneeded = function (o_event) {
+            mess.innerHTML += "onnegotiationneeded.";
+        };
+        o_pc.onicecandidate = function(o_event){
+            console.log("onicecandidate.");
+        };
+        o_pc.oniceconnectionstatechange = function(o_event){
+            console.log("oniceconnectionstatechange.");
+        };
+        o_pc.onicegatheringstatechange = function(o_event){
+            console.log("onicegatheringstatechange.");
+        };
+        o_pc.onsignalingstatechange = function (o_event) {
+            mess.innerHTML += "onsignalingstatechange.";
+        };
+        o_pc.onaddstream = function (o_event) {
+            console.log("onaddstream.");
+            setremotestream(o_event.stream);
+        };
+        o_pc.onremovestream = function (o_event) {
+            console.log("onremovestream.");
+        };
+    }
+
+    //    if (0 && window.WebSocket)
+    if (1)
+    {
+        ws = new WebSocket('wss://mcstest.starnetuc.cn:18443');
+        ws.onopen = function(e) {
+            console.log("连接成功");
+            mess.innerHTML = "连接成功";
+            // ws.send("game1");
+        };
+        ws.onclose = function(e){
+            console.log("服务器关闭");
+            mess.innerHTML = "服务器关闭";
+        };
+        ws.onerror = function(){
+            console.log("连接出错");
+            mess.innerHTML = "连接出错";
+        };
+        ws.onmessage = function(e){
+            //mess.innerHTML += "收到消息："+e.data+"<br>";
+            console.log("recv msg: "+e.data);
+            remoteSdp=e.data;
+            setRemoteSdp(e.data);
+        };
+        document.querySelector(".kuang").onclick = function(e){
+            // mess.innerHTML += "发送消息："+e.target.innerHTML+"<br>";
+            // ws.send(e.target.innerHTML);
+        };
+    } else {
+        mess.innerHTML = "websocket不支持";
+    }
+
+    function statusBtnOption() {
+
+        init();
+
+        wsc_init();
+
+        if (b_is_offer) {
+            initUserMediaOffer();
+        } else {
+            initUserMediaAnswer();
+        }
+
+    }
+</script>
+</body>
+</html>
